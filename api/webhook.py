@@ -17,36 +17,57 @@ def send_telegram_message(chat_id, text):
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        content_length = int(self.headers["Content-Length"])
-        post_data = self.rfile.read(content_length)
-        update = json.loads(post_data.decode("utf-8"))
+            content_length = int(self.headers["Content-Length"])
+            post_data = self.rfile.read(content_length)
+            update = json.loads(post_data.decode("utf-8"))
 
-        if "message" in update and "text" in update["message"]:
-            chat_id = update["message"]["chat"]["id"]
-            text = update["message"]["text"]
+            if "message" in update and "text" in update["message"]:
+                chat_id = update["message"]["chat"]["id"]
+                text = update["message"]["text"]
 
-            if "youtube.com" in text or "youtu.be" in text:
-                try:
-                    # Archive the request in MongoDB
-                    client = MongoClient(MONGODB_CONNECTION_STRING)
-                    db = client["ytbot_db"]
-                    collection = db.ytbot
+                # Extract all YouTube URLs from the message
+                yt_regex = r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[a-zA-Z0-9_-]{11}'
+                # We use a simpler regex that captures the standard formats
+                links = re.findall(r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[^\s]+', text)
 
-                    collection.insert_one(
-                        {"user_id": chat_id, "link": text, "status": "pending"}
-                    )
+                # Further clean the links to remove trailing punctuation or parameters that aren't part of the ID
+                cleaned_links = []
+                for link in links:
+                    # Remove trailing punctuation often captured by [^\s]+
+                    cleaned = re.sub(r'[.,!?;:]+$', '', link)
+                    cleaned_links.append(cleaned)
 
-                    # Acknowledge the user with utmost grace
-                    send_telegram_message(
-                        chat_id,
-                        "Your request has been received and placed within our most distinguished queue. We shall attend to it post-haste. 🎩⏳",
-                    )
-                except Exception as e:
-                    print(f"Error archiving request: {e}")
-                    send_telegram_message(
-                        chat_id,
-                        "I regret to inform you that a complication has arisen whilst archiving your request. Pray, try again shortly. ⚠️",
-                    )
+                if cleaned_links:
+                    try:
+                        client = MongoClient(MONGODB_CONNECTION_STRING)
+                        db = client["ytbot_db"]
+                        collection = db.ytbot
+
+                        for link in cleaned_links:
+                            collection.insert_one({
+                                "user_id": chat_id,
+                                "link": link,
+                                "status": "pending"
+                            })
+
+                        # Acknowledge the user with a summary of the discovered recordings
+                        count = len(cleaned_links)
+                        message = "Your request has been received"
+                        if count > 1:
+                            message = f"I have discovered {count} recordings in your message"
+                        else:
+                            message = "Your recording has been received"
+
+                        send_telegram_message(
+                            chat_id,
+                            f"{message} and placed within our most distinguished queue. We shall attend to them post-haste. 🎩⏳"
+                        )
+                    except Exception as e:
+                        print(f"Error archiving request: {e}")
+                        send_telegram_message(
+                            chat_id,
+                            "I regret to inform you that a complication has arisen whilst archiving your requests. Pray, try again shortly. ⚠️"
+                        )
 
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
