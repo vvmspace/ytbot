@@ -72,12 +72,19 @@ class handler(BaseHTTPRequestHandler):
                     }
 
                     # Handle cookies to bypass bot detection
-                    yt_cookies = os.environ.get("YT_COOKIES")
-                    if yt_cookies:
-                        cookies_path = "/tmp/cookies.txt"
-                        with open(cookies_path, "w") as f:
-                            f.write(yt_cookies)
+                    cookies_path = os.path.join(
+                        os.path.dirname(__file__), "cookies.firefox-private.txt"
+                    )
+
+                    if os.path.exists(cookies_path):
                         ydl_opts["cookiefile"] = cookies_path
+                    else:
+                        yt_cookies = os.environ.get("YT_COOKIES")
+                        if yt_cookies:
+                            tmp_cookies_path = "/tmp/cookies.txt"
+                            with open(tmp_cookies_path, "w") as f:
+                                f.write(yt_cookies)
+                            ydl_opts["cookiefile"] = tmp_cookies_path
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = ydl.extract_info(text, download=False)
@@ -120,7 +127,7 @@ class handler(BaseHTTPRequestHandler):
                     posh_error = "I regret to inform you that a most unfortunate error has occurred whilst processing your request."
 
                     if "sign in to confirm you’re not a bot" in error_msg:
-                        posh_error = "Alas, YouTube has mistaken my diligence for that of a common automaton. To resolve this, pray provide your session cookies in the YT_COOKIES environment variable."
+                        posh_error = "Alas, YouTube has mistaken my diligence for that of a common automaton. To resolve this, pray provide your session cookies in the YT_COOKIES environment variable or a cookies file in the api directory."
                         emoji = "🍪"
                     elif "unavailable" in error_msg:
                         posh_error = "It appears the recording you seek is unavailable or has been withdrawn from public view."
