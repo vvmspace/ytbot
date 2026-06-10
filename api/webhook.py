@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from http.server import BaseHTTPRequestHandler
 
 import requests
@@ -19,61 +20,67 @@ def send_telegram_message(chat_id, text, reply_to_id=None):
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
-            content_length = int(self.headers["Content-Length"])
-            post_data = self.rfile.read(content_length)
-            update = json.loads(post_data.decode("utf-8"))
+        content_length = int(self.headers["Content-Length"])
+        post_data = self.rfile.read(content_length)
+        update = json.loads(post_data.decode("utf-8"))
 
-            if "message" in update and "text" in update["message"]:
-                chat_id = update["message"]["chat"]["id"]
-                text = update["message"]["text"]
+        if "message" in update and "text" in update["message"]:
+            chat_id = update["message"]["chat"]["id"]
+            text = update["message"]["text"]
 
-                # Extract all YouTube URLs from the message
-                yt_regex = r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[a-zA-Z0-9_-]{11}'
-                # We use a simpler regex that captures the standard formats
-                links = re.findall(r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[^\s]+', text)
+            # Extract all YouTube URLs from the message
+            links = re.findall(
+                r"(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[^\s]+", text
+            )
 
-                # Further clean the links to remove trailing punctuation or parameters that aren't part of the ID
-                cleaned_links = []
-                for link in links:
-                    # Remove trailing punctuation often captured by [^\s]+
-                    cleaned = re.sub(r'[.,!?;:]+$', '', link)
-                    cleaned_links.append(cleaned)
+            # Further clean the links to remove trailing punctuation or parameters that aren't part of the ID
+            cleaned_links = []
+            for link in links:
+                # Remove trailing punctuation often captured by [^\s]+
+                cleaned = re.sub(r"[.,!?;:]+$", "", link)
+                cleaned_links.append(cleaned)
 
-                if cleaned_links:
-                    try:
-                        client = MongoClient(MONGODB_CONNECTION_STRING)
-                        db = client["ytbot_db"]
-                        collection = db.ytbot
-                        message_id = update["message"]["message_id"]
+            if cleaned_links:
+                try:
+                    client = MongoClient(MONGODB_CONNECTION_STRING)
+                    db = client["ytbot_db"]
+                    collection = db.ytbot
+                    message_id = update["message"]["message_id"]
 
-                        for link in cleaned_links:
-                            collection.insert_one({
+                    for link in cleaned_links:
+                        collection.insert_one(
+                            {
                                 "user_id": chat_id,
                                 "link": link,
                                 "status": "pending",
-                                "message_id": message_id
-                            })
-
-                        # Acknowledge the user with a summary of the discovered recordings
-                        count = len(cleaned_links)
-                        message = "Your request has been received"
-                        if count > 1:
-                            message = f"I have discovered {count} recordings in your message"
-                        else:
-                            message = "Your recording has been received"
-
-                        send_telegram_message(
-                            chat_id,
-                            f"{message} and placed within our most distinguished queue. We shall attend to them post-haste. 🎩⏳",
-                            reply_to_id=message_id
+                                "message_id": message_id,
+                            }
                         )
-                    except Exception as e:
-                        print(f"Error archiving request: {e}")
-                        send_telegram_message(
-                            chat_id,
-                            "I regret to inform you that a complication has arisen whilst archiving your requests. Pray, try again shortly. ⚠️",
-                            reply_to_id=update["message"]["message_id"] if "message" in update else None
+
+                    # Acknowledge the user with a summary of the discovered recordings
+                    count = len(cleaned_links)
+                    message = "Your request has been received"
+                    if count > 1:
+                        message = (
+                            f"I have discovered {count} recordings in your message"
                         )
+                    else:
+                        message = "Your recording has been received"
+
+                    send_telegram_message(
+                        chat_id,
+                        f"{message} and placed within our most distinguished queue. We shall attend to them post-haste. 🎩⏳",
+                        reply_to_id=message_id,
+                    )
+                except Exception as e:
+                    print(f"Error archiving request: {e}")
+                    send_telegram_message(
+                        chat_id,
+                        "I regret to inform you that a complication has arisen whilst archiving your requests. Pray, try again shortly. ⚠️",
+                        reply_to_id=update["message"]["message_id"]
+                        if "message" in update
+                        else None,
+                    )
 
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
