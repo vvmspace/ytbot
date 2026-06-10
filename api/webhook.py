@@ -136,8 +136,10 @@ class handler(BaseHTTPRequestHandler):
                         posh_error = "I am afraid this particular content is restricted by age, and I cannot procure it for you."
                         emoji = "🔞"
                     elif "private" in error_msg:
-                        posh_error = "The recording you have requested is private and therefore beyond my reach."
+                        posh_error = "The recording you have requested is reported as Private or restricted. If you know this to be incorrect, it may be that the provided cookies are no longer valid. Alas, the recording remains an impenetrable mystery."
                         emoji = "🔒"
+                        # Append the raw error for diagnostic purposes
+                        posh_error += f" (Technical detail: {str(e)})"
                     elif "format" in error_msg:
                         posh_error = "I struggled to find a suitable format for this recording that would satisfy my quality standards."
                         emoji = "🛠️"
