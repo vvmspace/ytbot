@@ -1,55 +1,55 @@
-# 🎩 The Distinguished YouTube Retrieval Bot
+# 🎩 The Distinguished YouTube Retrieval Bot (Async Edition)
 
-*An exquisite utility for the seamless procurement of high-fidelity audiovisual recordings from the YouTube archives, delivered with grace via the Telegram medium.*
+*An exquisite asynchronous utility for the procurement of high-fidelity audiovisual recordings, leveraging a refined queue system for unmatched reliability.*
 
 ---
 
 ## 📜 An Introduction
 
-Pray, allow me to introduce this most remarkable piece of software engineering. This bot serves as a refined intermediary, tasked with the diligent retrieval of YouTube content. Upon receiving a link, the bot shall, with surgical precision, identify the most superior quality available in both `mp4` and `m4a` formats and deliver them post-haste to the user.
+Pray, allow me to introduce the new and improved architecture of this remarkable tool. To ensure that no request is lost to the whims of server timeouts, the bot now operates as a duo: a **Webhook** and a **Worker**.
 
-It is designed specifically for deployment upon the esteemed infrastructure of **Vercel**, employing the versatile **Python** language to ensure a performance that is as reliable as a Swiss chronometer.
+The Webhook acts as a poised receptionist, accepting your requests and archiving them within a MongoDB vault. The Worker, a diligent archivist running upon your local machine, retrieves these requests and procures the media with surgical precision.
 
 ## ✨ Distinguished Features
 
-- **Surgical Quality Selection**: The bot eschews mediocrity, procuring only the finest available streams for both video and audio.
-- **Fastidious Naming Conventions**: Filenames are formatted with a level of tidiness that would satisfy the most exacting archivist. Spaces are replaced by underscores, pipes by hyphens, and all uncouth non-printable characters are banished entirely.
-- **Effortless Serverless Architecture**: By leveraging the brilliance of Vercel Functions, the bot operates without the burden of maintaining a permanent server.
-- **Asynchronous Delivery**: In a display of efficiency, the bot dispatches both audio and video simultaneously; whichever the Telegram servers manage to procure first shall be presented to the user immediately.
+- **Asynchronous Queueing**: Requests are safely stored in MongoDB, ensuring that even the most substantial recordings are processed without interruption.
+- **Local Procurement**: By running the worker locally, the bot avoids the uncouth bot-detection systems of the cloud, utilizing your own residential connection for a more seamless experience.
+- **Tiered Delivery**: The bot notifies the user at every stage—from the initial archiving to the final delivery of both visual and auditory components.
+- **Fastidious Naming**: Filenames are formatted with the utmost care: `video_name-channel_name` (spaces to `_`, pipes to `-`), ensuring a tidy archive.
 
 ## 🛠 The Process of Implementation
 
-To bring this marvel to fruition within your own digital domain, one must proceed as follows:
-
 ### I. The Prerequisites
-One must first obtain a **Telegram API Key**. This is achieved by engaging in a conversation with the esteemed [@BotFather](https://t.me/botfather) on Telegram, who shall grant you a token of authorization.
+One must possess:
+- A **Telegram API Key** (obtained via [@BotFather](https://t.me/botfather)).
+- A **MongoDB Connection String** (a cluster on MongoDB Atlas is most recommended).
 
-### II. Deployment to Vercel
-1. **The Repository**: Deposit this codebase into a GitHub or GitLab repository of your choosing.
+### II. The Webhook (Vercel Deployment)
+1. **The Repository**: Deposit this codebase into a GitHub or GitLab repository.
 2. **The Connection**: Link said repository to your Vercel account.
-3. **The Secret**: Within the Vercel dashboard, navigate to *Project Settings* $\rightarrow$ *Environment Variables* and introduce the following secret:
-   - `TELEGRAM_API_KEY`: *Your most guarded bot token.*
+3. **The Secrets**: In the Vercel dashboard, introduce the following environment variables:
+   - `TELEGRAM_API_KEY`: *Your bot token.*
+   - `MONGODB_CONNECTION_STRING`: *Your MongoDB URI.*
+4. **The Activation**: Inform Telegram of the webhook's residence:
+   `npx sethook <YOUR_TELEGRAM_API_KEY> https://<YOUR_SITE_NAME>.vercel.app/api/webhook`
 
-### III. The Final Flourish (The Webhook)
-The bot is now dormant, awaiting its instructions. To awaken it, one must inform Telegram of the bot's new residence. You may achieve this via one of the following methods.
+### III. The Worker (Local Execution)
+The worker must be run on a local machine where `yt-dlp` can operate freely.
 
-*As a point of reference, your function URL will typically resemble this:*
-`https://your-project-name.vercel.app/api/webhook`
-
-**The Modernist Approach (Via Terminal):**
-Employ the following command for a swift and efficient activation:
-`npx sethook <YOUR_TELEGRAM_API_KEY> <YOUR_FUNCTION_URL>`
-
-**The Traditionalist Approach (Via Browser):**
-Pray, visit the following URL in your browser, replacing the placeholders with your actual credentials:
-`https://api.telegram.org/bot<YOUR_TELEGRAM_API_KEY>/setWebhook?url=<YOUR_FUNCTION_URL>`
-
-Upon seeing the confirmation `"OK"`, the bot is officially in service.
+1. **Environment**: Create a `.env` file in the root directory:
+   ```env
+   TELEGRAM_API_KEY=your_token_here
+   MONGODB_CONNECTION_STRING=your_mongodb_uri_here
+   ```
+2. **Dependencies**: Install the required libraries:
+   `pip install -r requirements.txt`
+3. **Execution**: Awaken the worker:
+   `python worker.py`
 
 ## ⚖️ A Note on Technicalities
 
-To avoid the uncouth limitations of serverless timeouts and memory constraints, this implementation does not download the media to the server's local disk. Instead, it provides Telegram's servers with the direct, high-quality URLs from YouTube. This ensures a swift delivery that remains unencumbered by the constraints of the hosting environment.
+The Worker utilizes `yt-dlp` to download the finest available `mp4` and `m4a` formats. By operating locally, it bypasses the "bot detection" issues common to serverless environments. The files are sent to the user as `Documents` to preserve their high-fidelity quality and correct filenames.
 
 ---
 
-*Developed with poise and precision. May your downloads be swift and your quality superlative.*
+*Developed with poise and precision. May your queue be short and your quality superlative.*
