@@ -116,8 +116,32 @@ class handler(BaseHTTPRequestHandler):
                                 break
 
                         if not best_video_url or not best_audio_url:
+                            # Compile a summary of available formats for the user's perusal
+                            fmt_details = []
+                            for f in formats:
+                                ext = f.get("ext", "unknown")
+                                res = f.get(
+                                    "resolution", f.get("format_note", "unknown")
+                                )
+                                type_mark = ""
+                                if (
+                                    f.get("vcodec") != "none"
+                                    and f.get("acodec") != "none"
+                                ):
+                                    type_mark = "va"
+                                elif f.get("vcodec") != "none":
+                                    type_mark = "v"
+                                elif f.get("acodec") != "none":
+                                    type_mark = "a"
+                                fmt_details.append(f"{ext} ({res}) [{type_mark}]")
+
+                            # Limit the list to prevent the message from becoming uncouthly long
+                            formats_summary = ", ".join(fmt_details[:12])
+                            if len(fmt_details) > 12:
+                                formats_summary += " ..."
+
                             raise Exception(
-                                "I struggled to find a suitable format for this recording that would satisfy my quality standards."
+                                f"I struggled to find a suitable format for this recording that would satisfy my quality standards. I have observed the following alternatives: {formats_summary}"
                             )
 
                         # Send to Telegram
