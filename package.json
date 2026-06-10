@@ -1,0 +1,14 @@
+{
+  "name": "ytbot",
+  "version": "1.0.0",
+  "description": "Telegram bot for downloading YouTube videos and audio for Netlify",
+  "main": "netlify/functions/webhook.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@distube/ytdl-core": "^4.17.3",
+    "telegraf": "^4.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
