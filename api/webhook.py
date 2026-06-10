@@ -100,36 +100,51 @@ class handler(BaseHTTPRequestHandler):
 
                         # Extract direct URLs
                         formats = info.get("formats", [])
-
                         best_video_url = None
                         best_audio_url = None
 
-                        # Find best mp4 video: sort by height descending
-                        video_formats = [
+                        # TIER 1: Attempt to find the ideal mp4/m4a combination
+                        video_mp4 = [
                             f
                             for f in formats
                             if f.get("vcodec") != "none" and f.get("ext") == "mp4"
                         ]
-                        if video_formats:
-                            video_formats.sort(
-                                key=lambda x: x.get("height", 0), reverse=True
-                            )
-                            best_video_url = video_formats[0].get("url")
-
-                        # Find best m4a audio: sort by abr descending
-                        audio_formats = [
+                        audio_m4a = [
                             f
                             for f in formats
                             if f.get("acodec") != "none" and f.get("ext") == "m4a"
                         ]
-                        if audio_formats:
-                            audio_formats.sort(
-                                key=lambda x: x.get("abr", 0), reverse=True
-                            )
-                            best_audio_url = audio_formats[0].get("url")
 
-                        if not best_video_url or not best_audio_url:
-                            # Compile a summary of available formats for the user's perusal
+                        if video_mp4 and audio_m4a:
+                            video_mp4.sort(
+                                key=lambda x: x.get("height", 0), reverse=True
+                            )
+                            audio_m4a.sort(key=lambda x: x.get("abr", 0), reverse=True)
+                            best_video_url = video_mp4[0].get("url")
+                            best_audio_url = audio_m4a[0].get("url")
+                        else:
+                            # TIER 2: Fallback to the absolute best available regardless of extension
+                            all_videos = [
+                                f for f in formats if f.get("vcodec") != "none"
+                            ]
+                            all_audios = [
+                                f for f in formats if f.get("acodec") != "none"
+                            ]
+
+                            if all_videos:
+                                all_videos.sort(
+                                    key=lambda x: x.get("height", 0), reverse=True
+                                )
+                                best_video_url = all_videos[0].get("url")
+
+                            if all_audios:
+                                all_audios.sort(
+                                    key=lambda x: x.get("abr", 0), reverse=True
+                                )
+                                best_audio_url = all_audios[0].get("url")
+
+                        # If we found absolutely nothing, we admit defeat and list formats
+                        if not best_video_url and not best_audio_url:
                             fmt_details = []
                             for f in formats:
                                 ext = f.get("ext", "unknown")
@@ -148,18 +163,19 @@ class handler(BaseHTTPRequestHandler):
                                     type_mark = "a"
                                 fmt_details.append(f"{ext} ({res}) [{type_mark}]")
 
-                            # Limit the list to prevent the message from becoming uncouthly long
                             formats_summary = ", ".join(fmt_details[:12])
                             if len(fmt_details) > 12:
                                 formats_summary += " ..."
 
                             raise Exception(
-                                f"I struggled to find a suitable format for this recording that would satisfy my quality standards. I have observed the following alternatives: {formats_summary}"
+                                f"I struggled to find any suitable format for this recording. I have observed the following alternatives: {formats_summary}"
                             )
 
-                        # Send to Telegram
-                        send_telegram_video(chat_id, best_video_url, safe_name)
-                        send_telegram_audio(chat_id, best_audio_url, safe_name)
+                        # Send whatever we managed to procure
+                        if best_video_url:
+                            send_telegram_video(chat_id, best_video_url, safe_name)
+                        if best_audio_url:
+                            send_telegram_audio(chat_id, best_audio_url, safe_name)
 
                 except Exception as e:
                     error_msg = str(e).lower()
@@ -181,10 +197,12 @@ class handler(BaseHTTPRequestHandler):
                     elif "private" in error_msg:
                         posh_error = "The recording you have requested is reported as Private or restricted. If you know this to be incorrect, it may be that the provided cookies are no longer valid. Alas, the recording remains an impenetrable mystery."
                         emoji = "🔒"
-                        # Append the raw error for diagnostic purposes
                         posh_error += f" (Technical detail: {str(e)})"
                     elif "format" in error_msg:
-                        posh_error = "I struggled to find a suitable format for this recording that would satisfy my quality standards."
+                        if "I have observed the following alternatives" in error_msg:
+                            posh_error = str(e)
+                        else:
+                            posh_error = "I struggled to find a suitable format for this recording that would satisfy my quality standards."
                         emoji = "🛠️"
                     else:
                         posh_error += f" Specifically, the system reports a most peculiar complication: {str(e)}"
