@@ -77,17 +77,20 @@ class handler(BaseHTTPRequestHandler):
                         os.path.dirname(__file__), "cookies.txt"
                     )
                     tmp_cookies_path = "/tmp/cookies.txt"
+                    cookies_used = False
 
                     if os.path.exists(local_cookies_path):
                         # Copy local cookies to /tmp to avoid Read-only file system error on Vercel
                         shutil.copy(local_cookies_path, tmp_cookies_path)
                         ydl_opts["cookiefile"] = tmp_cookies_path
+                        cookies_used = True
                     else:
                         yt_cookies = os.environ.get("YT_COOKIES")
                         if yt_cookies:
                             with open(tmp_cookies_path, "w") as f:
                                 f.write(yt_cookies)
                             ydl_opts["cookiefile"] = tmp_cookies_path
+                            cookies_used = True
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = ydl.extract_info(text, download=False)
@@ -164,7 +167,10 @@ class handler(BaseHTTPRequestHandler):
                     posh_error = "I regret to inform you that a most unfortunate error has occurred whilst processing your request."
 
                     if "sign in to confirm you’re not a bot" in error_msg:
-                        posh_error = "Alas, YouTube has mistaken my diligence for that of a common automaton. To resolve this, pray provide your session cookies in the YT_COOKIES environment variable or a cookies.txt file in the api directory."
+                        if cookies_used:
+                            posh_error = "Alas, YouTube has mistaken my diligence for that of a common automaton, despite the credentials provided. It appears your cookies have expired or are no longer accepted. Pray, provide a fresh set of cookies in the cookies.txt file."
+                        else:
+                            posh_error = "Alas, YouTube has mistaken my diligence for that of a common automaton. To resolve this, pray provide your session cookies in the YT_COOKIES environment variable or a cookies.txt file in the api directory."
                         emoji = "🍪"
                     elif "unavailable" in error_msg:
                         posh_error = "It appears the recording you seek is unavailable or has been withdrawn from public view."
