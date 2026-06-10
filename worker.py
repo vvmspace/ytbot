@@ -60,12 +60,9 @@ def send_telegram_audio(chat_id, file_path, caption, reply_to_id=None):
             raise Exception(
                 f"Telegram API error {response.status_code}: {response.text}"
             )
-            raise Exception(
-                f"Telegram API error {response.status_code}: {response.text}"
-            )
 
 
-def procure_and_send(url, path, media_type, chat_id, safe_name):
+def procure_and_send(url, path, media_type, chat_id, safe_name, reply_to_id=None):
     """Downloads a specific URL and immediately dispatches it to the user."""
     try:
         # Procurement
@@ -77,12 +74,22 @@ def procure_and_send(url, path, media_type, chat_id, safe_name):
         # Immediate Delivery
         if media_type == "video":
             send_telegram_message(
-                chat_id, "The visual component is now ready for your perusal... 🎬"
+                chat_id,
+                "The visual component is now ready for your perusal... 🎬",
+                reply_to_id=reply_to_id,
             )
-            send_telegram_video(chat_id, path, f"{safe_name}.mp4")
+            send_telegram_video(
+                chat_id, path, f"{safe_name}.mp4", reply_to_id=reply_to_id
+            )
         elif media_type == "audio":
-            send_telegram_message(chat_id, "And now, the auditory accompaniment... 🎧")
-            send_telegram_audio(chat_id, path, f"{safe_name}.m4a")
+            send_telegram_message(
+                chat_id,
+                "And now, the auditory accompaniment... 🎧",
+                reply_to_id=reply_to_id,
+            )
+            send_telegram_audio(
+                chat_id, path, f"{safe_name}.m4a", reply_to_id=reply_to_id
+            )
 
         return True
     except Exception as e:
@@ -94,11 +101,13 @@ def process_task(task, collection):
     chat_id = task["user_id"]
     link = task["link"]
     task_id = task["_id"]
+    message_id = task.get("message_id")
 
     try:
         send_telegram_message(
             chat_id,
             "I have commenced the procurement of your recording. Pray, attend as I retrieve the finest quality... 🔍",
+            reply_to_id=message_id,
         )
 
         ydl_opts = {
@@ -188,11 +197,16 @@ def process_task(task, collection):
             with ThreadPoolExecutor() as executor:
                 futures = [
                     executor.submit(
-                        procure_and_send, url, path, mtype, chat_id, safe_name
+                        procure_and_send,
+                        url,
+                        path,
+                        mtype,
+                        chat_id,
+                        safe_name,
+                        message_id,
                     )
                     for url, path, mtype in download_tasks
                 ]
-                # Wait for all to complete before updating status
                 for future in futures:
                     future.result()
 
@@ -204,6 +218,7 @@ def process_task(task, collection):
         send_telegram_message(
             chat_id,
             f"I regret to inform you that a complication occurred whilst retrieving your recording. ⚠️\n{str(e)}",
+            reply_to_id=message_id,
         )
         collection.update_one({"_id": task_id}, {"$set": {"status": "failed"}})
 
