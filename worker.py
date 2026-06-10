@@ -130,7 +130,7 @@ def main():
         os.makedirs("downloads")
 
     client = MongoClient(MONGODB_CONNECTION_STRING)
-    db = client.get_database()
+    db = client["ytbot_db"]
     collection = db.ytbot
 
     while True:

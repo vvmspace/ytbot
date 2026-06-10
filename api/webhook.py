@@ -29,7 +29,7 @@ class handler(BaseHTTPRequestHandler):
                 try:
                     # Archive the request in MongoDB
                     client = MongoClient(MONGODB_CONNECTION_STRING)
-                    db = client.get_database()
+                    db = client["ytbot_db"]
                     collection = db.ytbot
 
                     collection.insert_one(

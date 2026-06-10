@@ -4,6 +4,8 @@ version = "0.1.0"
 dependencies = [
     "yt-dlp",
     "requests",
+    "pymongo",
+    "python-dotenv",
 ]
 
 [tool.vercel]
