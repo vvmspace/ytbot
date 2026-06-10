@@ -63,7 +63,11 @@ class handler(BaseHTTPRequestHandler):
                 try:
                     send_telegram_message(
                         chat_id,
-                        "Pray, wait a moment while I procure your recording with the utmost diligence... 🎩⏳",
+                        "Pray, wait a moment while I begin my investigations... 🎩⏳",
+                    )
+                    send_telegram_message(
+                        chat_id,
+                        "Searching the archives for the most superior formats... 🔍",
                     )
 
                     ydl_opts = {
@@ -173,8 +177,16 @@ class handler(BaseHTTPRequestHandler):
 
                         # Send whatever we managed to procure
                         if best_video_url:
+                            send_telegram_message(
+                                chat_id,
+                                "I have discovered the finest quality. Now, I shall dispatch the video... 🎬",
+                            )
                             send_telegram_video(chat_id, best_video_url, safe_name)
                         if best_audio_url:
+                            send_telegram_message(
+                                chat_id,
+                                "And now, the auditory accompaniment... 🎧",
+                            )
                             send_telegram_audio(chat_id, best_audio_url, safe_name)
 
                 except Exception as e:
