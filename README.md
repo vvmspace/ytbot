@@ -22,7 +22,7 @@ It is designed specifically for deployment upon the esteemed infrastructure of *
 To bring this marvel to fruition within your own digital domain, one must proceed as follows:
 
 ### I. The Prerequisites
-One must first obtain a **Telegram API Key**. This is achieved by engaging in a conversation with the esteemed `@BotFather` on Telegram, who shall grant you a token of authorization.
+One must first obtain a **Telegram API Key**. This is achieved by engaging in a conversation with the esteemed [@BotFather](https://t.me/botfather) on Telegram, who shall grant you a token of authorization.
 
 ### II. Deployment to Netlify
 1. **The Repository**: Deposit this codebase into a GitHub or GitLab repository of your choosing.
@@ -31,9 +31,15 @@ One must first obtain a **Telegram API Key**. This is achieved by engaging in a 
    - `TELEGRAM_API_KEY`: *Your most guarded bot token.*
 
 ### III. The Final Flourish (The Webhook)
-The bot is now dormant, awaiting its instructions. To awaken it, one must inform Telegram of the bot's new residence. Pray, visit the following URL in your browser, replacing the placeholders with your actual credentials:
+The bot is now dormant, awaiting its instructions. To awaken it, one must inform Telegram of the bot's new residence. You may achieve this via one of the following methods:
 
-`https://api.telegram.org/bot<YOUR_TELEGRAM_API_KEY>/setWebhook?url=https://<YOUR_SITE_NAME>.netlify.app/.netlify/functions/webhook`
+**The Modernist Approach (Via Terminal):**
+Employ the following command for a swift and efficient activation:
+`npx sethook <YOUR_TELEGRAM_API_KEY> <YOUR_FUNCTION_URL>`
+
+**The Traditionalist Approach (Via Browser):**
+Pray, visit the following URL in your browser, replacing the placeholders with your actual credentials:
+`https://api.telegram.org/bot<YOUR_TELEGRAM_API_KEY>/setWebhook?url=<YOUR_FUNCTION_URL>`
 
 Upon seeing the confirmation `"OK"`, the bot is officially in service.
 
