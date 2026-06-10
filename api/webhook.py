@@ -74,7 +74,7 @@ class handler(BaseHTTPRequestHandler):
 
                     # Handle cookies to bypass bot detection
                     local_cookies_path = os.path.join(
-                        os.path.dirname(__file__), "cookies.firefox-private.txt"
+                        os.path.dirname(__file__), "cookies.txt"
                     )
                     tmp_cookies_path = "/tmp/cookies.txt"
 
@@ -130,7 +130,7 @@ class handler(BaseHTTPRequestHandler):
                     posh_error = "I regret to inform you that a most unfortunate error has occurred whilst processing your request."
 
                     if "sign in to confirm you’re not a bot" in error_msg:
-                        posh_error = "Alas, YouTube has mistaken my diligence for that of a common automaton. To resolve this, pray provide your session cookies in the YT_COOKIES environment variable or a cookies file in the api directory."
+                        posh_error = "Alas, YouTube has mistaken my diligence for that of a common automaton. To resolve this, pray provide your session cookies in the YT_COOKIES environment variable or a cookies.txt file in the api directory."
                         emoji = "🍪"
                     elif "unavailable" in error_msg:
                         posh_error = "It appears the recording you seek is unavailable or has been withdrawn from public view."
