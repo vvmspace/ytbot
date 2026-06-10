@@ -1,0 +1,11 @@
+# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file! Do not edit.
+
+.youtube.com	TRUE	/	TRUE	1796666338	__Secure-YNID	19.YT=bCq1nuHcdgRDisVym1qT35wSJ8cUuLTIaCWbKcI9pJo5tWQ5n4mD1CLtPa7x4nmG9naoA7XjVyq_loIg2NGhXlyDxLTozPXp_ZpQJfQ6c4zq5IyWxQyHZ0yyf6W-N8eU_IDOVmnfqj6E9xCeQo3NdWmbim7O0gfSGd95y9eIEdXmPKsVB7evGZr2f2O1sTFWYOcxchE6SDVzgWWJWT28hxcxshGto1Evw51_xxY8FjJBuYYxN2dmaTrEuC4Lna-HAgtltfFuj_Cf5Q0LF4glupaDYn98Jh4h1ftIUHPYIYfCZgBjtH3zIRUY3Fw4hqj-GKMbZkx73Aln33hr_F0aWQ
+.youtube.com	TRUE	/	TRUE	1781116139	GPS	1
+.youtube.com	TRUE	/	TRUE	0	YSC	4YL3VruMwtg
+.youtube.com	TRUE	/	TRUE	1796666359	VISITOR_INFO1_LIVE	Grsy5AVbd2A
+.youtube.com	TRUE	/	TRUE	1796666359	VISITOR_PRIVACY_METADATA	CgJJUhIEGgAgKw%3D%3D
+.youtube.com	TRUE	/	TRUE	1796666359	__Secure-ROLLOUT_TOKEN	CIKm0NOyvMXleBCOj_77n_2UAxiy_sqFoP2UAw%3D%3D
+.youtube.com	TRUE	/	TRUE	1815674361	PREF	f4=4000000&tz=Atlantic.Reykjavik
