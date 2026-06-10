@@ -20,10 +20,14 @@ MAX_FILE_SIZE = 45 * 1024 * 1024  # 45MB safety limit
 
 def format_filename(title, channel):
     full_title = f"{title}-{channel}"
+    # Replace spaces with _
     formatted = re.sub(r"\s+", "_", full_title)
+    # Replace | with -
     formatted = formatted.replace("|", "-")
-    formatted = re.sub(r"[^\x20-\x7E]", "", formatted)
-    return formatted.strip()
+    # Remove characters that are NOT word characters, dots, or hyphens
+    # \w matches Unicode alphanumeric characters and underscores
+    formatted = re.sub(r"[^\w\.\-]", "", formatted)
+    return formatted.strip(". ")
 
 
 def send_telegram_message(chat_id, text, reply_to_id=None):
@@ -38,7 +42,11 @@ def send_telegram_video(chat_id, file_path, caption, reply_to_id=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_API_KEY}/sendVideo"
     with open(file_path, "rb") as f:
         files = {"video": f}
-        payload = {"chat_id": chat_id, "caption": caption}
+        payload = {
+            "chat_id": chat_id,
+            "caption": caption,
+            "supports_streaming": True,
+        }
         if reply_to_id:
             payload["reply_to_message_id"] = reply_to_id
         response = requests.post(url, data=payload, files=files, timeout=60)
@@ -62,14 +70,41 @@ def send_telegram_audio(chat_id, file_path, caption, reply_to_id=None):
             )
 
 
-def procure_and_send(url, path, media_type, chat_id, safe_name, reply_to_id=None):
+def procure_and_send(
+    original_url, path, media_type, chat_id, safe_name, format_id, reply_to_id=None
+):
     """Downloads a specific URL and immediately dispatches it to the user."""
     try:
-        # Procurement
+        # Procurement - use original_url and format_id to bypass YouTube throttling
+        # We use postprocessor_args to re-encode to a standard H.264/AAC profile.
+        # This fixes proportion issues (stretching/squashing) and ensures
+        # perfect compatibility with the Telegram player.
         with yt_dlp.YoutubeDL(
-            {"outtmpl": path, "quiet": True, "no_warnings": True}
+            {
+                "outtmpl": path,
+                "quiet": True,
+                "no_warnings": True,
+                "format": format_id,
+                "merge_output_format": "mp4",
+                "postprocessor_args": {
+                    "ffmpeg": [
+                        "-c:v",
+                        "libx264",
+                        "-crf",
+                        "23",
+                        "-preset",
+                        "veryfast",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "128k",
+                        "-vf",
+                        "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Ensure even dimensions
+                    ],
+                },
+            }
         ) as ydl:
-            ydl.download([url])
+            ydl.download([original_url])
 
         # Immediate Delivery
         if media_type == "video":
@@ -103,6 +138,10 @@ def process_task(task, collection):
     task_id = task["_id"]
     message_id = task.get("message_id")
 
+    # Create a unique directory for this specific task to avoid conflicts during parallel downloads
+    task_dir = os.path.join("downloads", str(task_id))
+    os.makedirs(task_dir, exist_ok=True)
+
     try:
         send_telegram_message(
             chat_id,
@@ -123,76 +162,120 @@ def process_task(task, collection):
             safe_name = format_filename(title, channel)
             formats = info.get("formats", [])
 
-            best_video_url = None
-            best_audio_url = None
+            best_video_format = None
+            best_audio_format = None
 
             def get_size(f):
                 return f.get("filesize") or f.get("filesize_approx", float("inf"))
 
-            # TIER 1: Best mp4/m4a that fit within size limit
-            video_mp4 = [
-                f
-                for f in formats
-                if f.get("vcodec") != "none"
-                and f.get("ext") == "mp4"
-                and get_size(f) <= MAX_FILE_SIZE
-            ]
+            # TIER 1: Find the best audio-only m4a for the separate audio file
             audio_m4a = [
                 f
                 for f in formats
-                if f.get("acodec") != "none"
+                if f.get("acodec")
+                and "mp4a" in f.get("acodec")
                 and f.get("ext") == "m4a"
                 and get_size(f) <= MAX_FILE_SIZE
             ]
 
-            if video_mp4 and audio_m4a:
-                video_mp4.sort(key=lambda x: x.get("height", 0), reverse=True)
+            # TIER 2: Find the best video with sound that fits within MAX_FILE_SIZE
+            # We prioritize combined formats (single file with sound) to ensure perfect proportions
+            video_candidates = []
+
+            # Option A: Combined mp4 formats (already have sound and correct proportions)
+            combined_mp4 = [
+                f
+                for f in formats
+                if f.get("vcodec") != "none"
+                and f.get("acodec") != "none"
+                and f.get("ext") == "mp4"
+                and get_size(f) <= MAX_FILE_SIZE
+            ]
+            for f in combined_mp4:
+                video_candidates.append(
+                    {
+                        "format_id": f.get("format_id"),
+                        "height": f.get("height", 0),
+                        "size": get_size(f),
+                        "combined": True,
+                    }
+                )
+
+            # Option B: Separate video (mp4) + audio (m4a) to be merged
+            # Only considered as fallback if combined formats are too low quality or unavailable
+            video_only_mp4 = [
+                f
+                for f in formats
+                if f.get("vcodec")
+                and "avc1" in f.get("vcodec")
+                and f.get("acodec") == "none"
+                and f.get("ext") == "mp4"
+            ]
+
+            # For each video stream, find the best audio stream that keeps the total under the limit
+            for v in video_only_mp4:
+                v_size = get_size(v)
+                if v_size >= MAX_FILE_SIZE:
+                    continue
+
+                # Find best audio that fits in the remaining space
+                remaining_space = MAX_FILE_SIZE - v_size
+                best_a_for_v = None
+                best_a_abr = 0
+
+                for a in audio_m4a:
+                    a_size = get_size(a)
+                    if a_size <= remaining_space and a.get("abr", 0) > best_a_abr:
+                        best_a_for_v = a
+                        best_a_abr = a.get("abr", 0)
+
+                if best_a_for_v:
+                    video_candidates.append(
+                        {
+                            "format_id": f"{v.get('format_id')}+{best_a_for_v.get('format_id')}",
+                            "height": v.get("height", 0),
+                            "size": v_size + get_size(best_a_for_v),
+                            "combined": False,
+                        }
+                    )
+
+            # Pick the candidate with the highest resolution.
+            # If heights are equal, prefer combined formats for better proportion stability.
+            best_video_format = None
+            if video_candidates:
+                video_candidates.sort(
+                    key=lambda x: (x["height"], x["combined"]), reverse=True
+                )
+                best_video_format = video_candidates[0]["format_id"]
+
+            best_audio_format = None
+            if audio_m4a:
                 audio_m4a.sort(key=lambda x: x.get("abr", 0), reverse=True)
-                best_video_url = video_mp4[0].get("url")
-                best_audio_url = audio_m4a[0].get("url")
-            else:
-                # TIER 2: Best of any extension that fit within size limit
-                all_videos = [
-                    f
-                    for f in formats
-                    if f.get("vcodec") != "none" and get_size(f) <= MAX_FILE_SIZE
-                ]
-                all_audios = [
-                    f
-                    for f in formats
-                    if f.get("acodec") != "none" and get_size(f) <= MAX_FILE_SIZE
-                ]
+                best_audio_format = audio_m4a[0].get("format_id")
 
-                if all_videos:
-                    all_videos.sort(key=lambda x: x.get("height", 0), reverse=True)
-                    best_video_url = all_videos[0].get("url")
-                if all_audios:
-                    all_audios.sort(key=lambda x: x.get("abr", 0), reverse=True)
-                    best_audio_url = all_audios[0].get("url")
-
-            if not best_video_url and not best_audio_url:
+            if not best_video_format and not best_audio_format:
                 raise Exception(
                     "The recording is simply too gargantuan for the Telegram Bot API. No version fits within the 50MB limit."
                 )
 
             # Prepare paths
             v_path = (
-                os.path.join("downloads", f"{safe_name}.mp4")
-                if best_video_url
+                os.path.join(task_dir, f"{safe_name}.mp4")
+                if best_video_format
                 else None
             )
             a_path = (
-                os.path.join("downloads", f"{safe_name}.m4a")
-                if best_audio_url
+                os.path.join(task_dir, f"{safe_name}.m4a")
+                if best_audio_format
                 else None
             )
 
             # Parallel Procurement and Immediate Delivery
             download_tasks = []
-            if best_video_url:
-                download_tasks.append((best_video_url, v_path, "video"))
-            if best_audio_url:
-                download_tasks.append((best_audio_url, a_path, "audio"))
+            if best_video_format:
+                download_tasks.append((link, v_path, "video", best_video_format))
+            if best_audio_format:
+                download_tasks.append((link, a_path, "audio", best_audio_format))
 
             with ThreadPoolExecutor() as executor:
                 futures = [
@@ -203,15 +286,16 @@ def process_task(task, collection):
                         mtype,
                         chat_id,
                         safe_name,
+                        fid,
                         message_id,
                     )
-                    for url, path, mtype in download_tasks
+                    for url, path, mtype, fid in download_tasks
                 ]
                 for future in futures:
                     future.result()
 
         collection.update_one({"_id": task_id}, {"$set": {"status": "completed"}})
-        shutil.rmtree("downloads", ignore_errors=True)
+        shutil.rmtree(task_dir, ignore_errors=True)
 
     except Exception as e:
         print(f"Error processing task {task_id}: {e}")
