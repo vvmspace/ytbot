@@ -98,12 +98,35 @@ class handler(BaseHTTPRequestHandler):
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = ydl.extract_info(text, download=False)
+
+                        # IMMEDIATELY list all available formats for transparency
+                        formats = info.get("formats", [])
+                        fmt_details = []
+                        for f in formats:
+                            ext = f.get("ext", "unknown")
+                            res = f.get("resolution", f.get("format_note", "unknown"))
+                            type_mark = ""
+                            if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                                type_mark = "va"
+                            elif f.get("vcodec") != "none":
+                                type_mark = "v"
+                            elif f.get("acodec") != "none":
+                                type_mark = "a"
+                            fmt_details.append(f"{ext} ({res}) [{type_mark}]")
+
+                        formats_summary = ", ".join(fmt_details[:15])
+                        if len(fmt_details) > 15:
+                            formats_summary += " ..."
+
+                        send_telegram_message(
+                            chat_id,
+                            f"I have observed the following available formats in the archives: {formats_summary} 📜",
+                        )
+
                         title = info.get("title", "Unknown Title")
                         channel = info.get("uploader", "Unknown Channel")
                         safe_name = format_filename(title, channel)
 
-                        # Extract direct URLs
-                        formats = info.get("formats", [])
                         best_video_url = None
                         best_audio_url = None
 
@@ -147,32 +170,10 @@ class handler(BaseHTTPRequestHandler):
                                 )
                                 best_audio_url = all_audios[0].get("url")
 
-                        # If we found absolutely nothing, we admit defeat and list formats
+                        # If we found absolutely nothing, we admit defeat
                         if not best_video_url and not best_audio_url:
-                            fmt_details = []
-                            for f in formats:
-                                ext = f.get("ext", "unknown")
-                                res = f.get(
-                                    "resolution", f.get("format_note", "unknown")
-                                )
-                                type_mark = ""
-                                if (
-                                    f.get("vcodec") != "none"
-                                    and f.get("acodec") != "none"
-                                ):
-                                    type_mark = "va"
-                                elif f.get("vcodec") != "none":
-                                    type_mark = "v"
-                                elif f.get("acodec") != "none":
-                                    type_mark = "a"
-                                fmt_details.append(f"{ext} ({res}) [{type_mark}]")
-
-                            formats_summary = ", ".join(fmt_details[:12])
-                            if len(fmt_details) > 12:
-                                formats_summary += " ..."
-
                             raise Exception(
-                                f"I struggled to find any suitable format for this recording. I have observed the following alternatives: {formats_summary}"
+                                "I struggled to find any suitable format for this recording, despite my exhaustive search."
                             )
 
                         # Send whatever we managed to procure
@@ -211,10 +212,7 @@ class handler(BaseHTTPRequestHandler):
                         emoji = "🔒"
                         posh_error += f" (Technical detail: {str(e)})"
                     elif "format" in error_msg:
-                        if "I have observed the following alternatives" in error_msg:
-                            posh_error = str(e)
-                        else:
-                            posh_error = "I struggled to find a suitable format for this recording that would satisfy my quality standards."
+                        posh_error = "I struggled to find a suitable format for this recording that would satisfy my quality standards."
                         emoji = "🛠️"
                     else:
                         posh_error += f" Specifically, the system reports a most peculiar complication: {str(e)}"
