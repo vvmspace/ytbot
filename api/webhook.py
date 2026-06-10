@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 from http.server import BaseHTTPRequestHandler
 
 import requests
@@ -72,16 +73,18 @@ class handler(BaseHTTPRequestHandler):
                     }
 
                     # Handle cookies to bypass bot detection
-                    cookies_path = os.path.join(
+                    local_cookies_path = os.path.join(
                         os.path.dirname(__file__), "cookies.firefox-private.txt"
                     )
+                    tmp_cookies_path = "/tmp/cookies.txt"
 
-                    if os.path.exists(cookies_path):
-                        ydl_opts["cookiefile"] = cookies_path
+                    if os.path.exists(local_cookies_path):
+                        # Copy local cookies to /tmp to avoid Read-only file system error on Vercel
+                        shutil.copy(local_cookies_path, tmp_cookies_path)
+                        ydl_opts["cookiefile"] = tmp_cookies_path
                     else:
                         yt_cookies = os.environ.get("YT_COOKIES")
                         if yt_cookies:
-                            tmp_cookies_path = "/tmp/cookies.txt"
                             with open(tmp_cookies_path, "w") as f:
                                 f.write(yt_cookies)
                             ydl_opts["cookiefile"] = tmp_cookies_path
