@@ -1,6 +1,9 @@
+import glob
 import os
 import re
+import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 import yt_dlp
@@ -12,30 +15,79 @@ load_dotenv()
 
 TELEGRAM_API_KEY = os.environ.get("TELEGRAM_API_KEY")
 MONGODB_CONNECTION_STRING = os.environ.get("MONGODB_CONNECTION_STRING")
+MAX_FILE_SIZE = 45 * 1024 * 1024  # 45MB safety limit
 
 
 def format_filename(title, channel):
     full_title = f"{title}-{channel}"
-    # Replace spaces with _, | with -, and remove non-printable characters
     formatted = re.sub(r"\s+", "_", full_title)
     formatted = formatted.replace("|", "-")
     formatted = re.sub(r"[^\x20-\x7E]", "", formatted)
     return formatted.strip()
 
 
-def send_telegram_message(chat_id, text):
+def send_telegram_message(chat_id, text, reply_to_id=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_API_KEY}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
+    if reply_to_id:
+        payload["reply_to_message_id"] = reply_to_id
     requests.post(url, json=payload)
 
 
-def send_telegram_document(chat_id, file_path, caption):
-    # Using sendDocument to ensure the file is sent as a file with the correct name
-    url = f"https://api.telegram.org/bot{TELEGRAM_API_KEY}/sendDocument"
+def send_telegram_video(chat_id, file_path, caption, reply_to_id=None):
+    url = f"https://api.telegram.org/bot{TELEGRAM_API_KEY}/sendVideo"
     with open(file_path, "rb") as f:
-        files = {"document": f}
+        files = {"video": f}
         payload = {"chat_id": chat_id, "caption": caption}
-        requests.post(url, data=payload, files=files)
+        if reply_to_id:
+            payload["reply_to_message_id"] = reply_to_id
+        response = requests.post(url, data=payload, files=files, timeout=60)
+        if response.status_code != 200:
+            raise Exception(
+                f"Telegram API error {response.status_code}: {response.text}"
+            )
+
+
+def send_telegram_audio(chat_id, file_path, caption, reply_to_id=None):
+    url = f"https://api.telegram.org/bot{TELEGRAM_API_KEY}/sendAudio"
+    with open(file_path, "rb") as f:
+        files = {"audio": f}
+        payload = {"chat_id": chat_id, "caption": caption}
+        if reply_to_id:
+            payload["reply_to_message_id"] = reply_to_id
+        response = requests.post(url, data=payload, files=files, timeout=60)
+        if response.status_code != 200:
+            raise Exception(
+                f"Telegram API error {response.status_code}: {response.text}"
+            )
+            raise Exception(
+                f"Telegram API error {response.status_code}: {response.text}"
+            )
+
+
+def procure_and_send(url, path, media_type, chat_id, safe_name):
+    """Downloads a specific URL and immediately dispatches it to the user."""
+    try:
+        # Procurement
+        with yt_dlp.YoutubeDL(
+            {"outtmpl": path, "quiet": True, "no_warnings": True}
+        ) as ydl:
+            ydl.download([url])
+
+        # Immediate Delivery
+        if media_type == "video":
+            send_telegram_message(
+                chat_id, "The visual component is now ready for your perusal... 🎬"
+            )
+            send_telegram_video(chat_id, path, f"{safe_name}.mp4")
+        elif media_type == "audio":
+            send_telegram_message(chat_id, "And now, the auditory accompaniment... 🎧")
+            send_telegram_audio(chat_id, path, f"{safe_name}.m4a")
+
+        return True
+    except Exception as e:
+        print(f"Procurement failed for {media_type} {url}: {e}")
+        return False
 
 
 def process_task(task, collection):
@@ -50,67 +102,101 @@ def process_task(task, collection):
         )
 
         ydl_opts = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "outtmpl": "downloads/%(title)s.%(ext)s",
+            "format": "best",
             "quiet": True,
             "no_warnings": True,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link, download=True)
+            info = ydl.extract_info(link, download=False)
             title = info.get("title", "Unknown Title")
             channel = info.get("uploader", "Unknown Channel")
             safe_name = format_filename(title, channel)
+            formats = info.get("formats", [])
 
-            # yt-dlp might have downloaded a single file or separate video/audio
-            # We need to find the actual files on disk
-            import glob
+            best_video_url = None
+            best_audio_url = None
 
-            files = glob.glob(f"downloads/*{safe_name}*")  # Simplified search
+            def get_size(f):
+                return f.get("filesize") or f.get("filesize_approx", float("inf"))
 
-            # Better: use the info to find the downloaded file paths
-            # Since we use a simple outtmpl, let's find the mp4 and m4a
-            # For simplicity in this worker, we'll search for the specific extensions
-            # downloaded in the current directory/downloads
+            # TIER 1: Best mp4/m4a that fit within size limit
+            video_mp4 = [
+                f
+                for f in formats
+                if f.get("vcodec") != "none"
+                and f.get("ext") == "mp4"
+                and get_size(f) <= MAX_FILE_SIZE
+            ]
+            audio_m4a = [
+                f
+                for f in formats
+                if f.get("acodec") != "none"
+                and f.get("ext") == "m4a"
+                and get_size(f) <= MAX_FILE_SIZE
+            ]
 
-            # Actually, let's refine the download to be more explicit
-            # and capture the filenames directly.
+            if video_mp4 and audio_m4a:
+                video_mp4.sort(key=lambda x: x.get("height", 0), reverse=True)
+                audio_m4a.sort(key=lambda x: x.get("abr", 0), reverse=True)
+                best_video_url = video_mp4[0].get("url")
+                best_audio_url = audio_m4a[0].get("url")
+            else:
+                # TIER 2: Best of any extension that fit within size limit
+                all_videos = [
+                    f
+                    for f in formats
+                    if f.get("vcodec") != "none" and get_size(f) <= MAX_FILE_SIZE
+                ]
+                all_audios = [
+                    f
+                    for f in formats
+                    if f.get("acodec") != "none" and get_size(f) <= MAX_FILE_SIZE
+                ]
 
-            # Re-extracting just for the filenames if needed,
-            # but ydl.extract_info with download=True usually handles it.
+                if all_videos:
+                    all_videos.sort(key=lambda x: x.get("height", 0), reverse=True)
+                    best_video_url = all_videos[0].get("url")
+                if all_audios:
+                    all_audios.sort(key=lambda x: x.get("abr", 0), reverse=True)
+                    best_audio_url = all_audios[0].get("url")
 
-            # Let's search for the files created
-            import os
-
-            all_files = os.listdir("downloads")
-
-            video_file = None
-            audio_file = None
-
-            for f in all_files:
-                if f.endswith(".mp4"):
-                    video_file = os.path.join("downloads", f)
-                elif f.endswith(".m4a"):
-                    audio_file = os.path.join("downloads", f)
-
-            if video_file:
-                send_telegram_message(
-                    chat_id, "The visual component is now ready for your perusal... 🎬"
+            if not best_video_url and not best_audio_url:
+                raise Exception(
+                    "The recording is simply too gargantuan for the Telegram Bot API. No version fits within the 50MB limit."
                 )
-                send_telegram_document(chat_id, video_file, f"{safe_name}.mp4")
 
-            if audio_file:
-                send_telegram_message(
-                    chat_id, "And now, the auditory accompaniment... 🎧"
-                )
-                send_telegram_document(chat_id, audio_file, f"{safe_name}.m4a")
+            # Prepare paths
+            v_path = (
+                os.path.join("downloads", f"{safe_name}.mp4")
+                if best_video_url
+                else None
+            )
+            a_path = (
+                os.path.join("downloads", f"{safe_name}.m4a")
+                if best_audio_url
+                else None
+            )
 
-        # Mark task as completed
+            # Parallel Procurement and Immediate Delivery
+            download_tasks = []
+            if best_video_url:
+                download_tasks.append((best_video_url, v_path, "video"))
+            if best_audio_url:
+                download_tasks.append((best_audio_url, a_path, "audio"))
+
+            with ThreadPoolExecutor() as executor:
+                futures = [
+                    executor.submit(
+                        procure_and_send, url, path, mtype, chat_id, safe_name
+                    )
+                    for url, path, mtype in download_tasks
+                ]
+                # Wait for all to complete before updating status
+                for future in futures:
+                    future.result()
+
         collection.update_one({"_id": task_id}, {"$set": {"status": "completed"}})
-
-        # Clean up downloads
-        import shutil
-
         shutil.rmtree("downloads", ignore_errors=True)
 
     except Exception as e:
@@ -123,9 +209,7 @@ def process_task(task, collection):
 
 
 def main():
-    print("The Distinguished Worker has awakened. Polling the archives... 🎩")
-
-    # Ensure downloads directory exists
+    print("The Distinguished Worker has awakened for a brief appointment. 🎩")
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
 
@@ -133,25 +217,19 @@ def main():
     db = client["ytbot_db"]
     collection = db.ytbot
 
-    while True:
-        try:
-            # Find the first pending task
-            task = collection.find_one({"status": "pending"})
-
-            if task:
-                print(f"Processing request for user {task['user_id']}...")
-                # Mark as processing to avoid double-handling
-                collection.update_one(
-                    {"_id": task["_id"]}, {"$set": {"status": "processing"}}
-                )
-                process_task(task, collection)
-                print("Task completed successfully.")
-            else:
-                # No tasks, sleep for a bit
-                time.sleep(10)
-        except Exception as e:
-            print(f"Worker encountered an error: {e}")
-            time.sleep(10)
+    try:
+        task = collection.find_one({"status": "pending"})
+        if task:
+            print(f"Processing request for user {task['user_id']}...")
+            collection.update_one(
+                {"_id": task["_id"]}, {"$set": {"status": "processing"}}
+            )
+            process_task(task, collection)
+            print("Task completed successfully.")
+        else:
+            print("The archives are currently empty. No pending tasks to attend to.")
+    except Exception as e:
+        print(f"Worker encountered a critical error: {e}")
 
 
 if __name__ == "__main__":
