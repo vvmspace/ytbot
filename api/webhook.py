@@ -30,7 +30,8 @@ class handler(BaseHTTPRequestHandler):
 
             # Extract all YouTube URLs from the message
             links = re.findall(
-                r"(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[^\s]+", text
+                r"https?://(?:(?:www|m)\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[^\s]+",
+                text,
             )
 
             # Further clean the links to remove trailing punctuation or parameters that aren't part of the ID
