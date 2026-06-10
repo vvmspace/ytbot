@@ -96,24 +96,34 @@ class handler(BaseHTTPRequestHandler):
                         safe_name = format_filename(title, channel)
 
                         # Extract direct URLs
-                        # Note: yt-dlp usually provides a combined url if format is best,
-                        # but for separate mp4/m4a we need to look at the formats list.
                         formats = info.get("formats", [])
 
                         best_video_url = None
                         best_audio_url = None
 
-                        # Find best mp4 video
-                        for f in formats:
-                            if f.get("vcodec") != "none" and f.get("ext") == "mp4":
-                                best_video_url = f.get("url")
-                                break
+                        # Find best mp4 video: sort by height descending
+                        video_formats = [
+                            f
+                            for f in formats
+                            if f.get("vcodec") != "none" and f.get("ext") == "mp4"
+                        ]
+                        if video_formats:
+                            video_formats.sort(
+                                key=lambda x: x.get("height", 0), reverse=True
+                            )
+                            best_video_url = video_formats[0].get("url")
 
-                        # Find best m4a audio
-                        for f in formats:
-                            if f.get("acodec") != "none" and f.get("ext") == "m4a":
-                                best_audio_url = f.get("url")
-                                break
+                        # Find best m4a audio: sort by abr descending
+                        audio_formats = [
+                            f
+                            for f in formats
+                            if f.get("acodec") != "none" and f.get("ext") == "m4a"
+                        ]
+                        if audio_formats:
+                            audio_formats.sort(
+                                key=lambda x: x.get("abr", 0), reverse=True
+                            )
+                            best_audio_url = audio_formats[0].get("url")
 
                         if not best_video_url or not best_audio_url:
                             # Compile a summary of available formats for the user's perusal
