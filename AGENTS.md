@@ -51,6 +51,7 @@ Proposal:
 Aceptance criteria:
 
 The code should be sexy.
+Не переименовывай такие параметры, как название базы и коллекций.
 Logic should be separated by files/directories/domains.
 Max single file length: 250 strings.
 

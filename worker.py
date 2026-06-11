@@ -276,8 +276,8 @@ def process_task(task, collection):
 
 def main():
     client = MongoClient(MONGODB_CONNECTION_STRING)
-    db = client["ytbot_db"]
-    collection = db["ytbot"]
+    db = client["ytbot"]
+    collection = db["tasks"]
 
     task = collection.find_one({"status": "pending"})
     if task:
