@@ -279,7 +279,11 @@ def main():
     db = client["ytbot"]
     collection = db["tasks"]
 
-    task = collection.find_one({"status": "pending"})
+    # Atomically find and mark task as processing to avoid race conditions
+    task = collection.find_one_and_update(
+        {"status": "pending"}, {"$set": {"status": "processing"}}, return_document=True
+    )
+
     if task:
         logger.info(f"Found pending task {task['_id']}. Starting processing...")
         process_task(task, collection)

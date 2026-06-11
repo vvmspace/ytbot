@@ -50,14 +50,22 @@ class handler(BaseHTTPRequestHandler):
                     message_id = msg.get("message_id")
 
                     for link in cleaned_links:
-                        collection.insert_one(
-                            {
-                                "user_id": chat_id,
-                                "link": link,
-                                "status": "pending",
-                                "message_id": message_id,
-                            }
+                        # Avoid duplicates: check if task is already pending
+                        exists = collection.find_one(
+                            {"user_id": chat_id, "link": link, "status": "pending"}
                         )
+
+                        if not exists:
+                            collection.insert_one(
+                                {
+                                    "user_id": chat_id,
+                                    "link": link,
+                                    "status": "pending",
+                                    "message_id": message_id,
+                                }
+                            )
+                        else:
+                            logger.info(f"Duplicate pending task ignored: {link}")
 
                     # Acknowledge the user with a summary of the discovered recordings
                     count = len(cleaned_links)
