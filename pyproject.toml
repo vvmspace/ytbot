@@ -6,6 +6,7 @@ dependencies = [
     "requests",
     "pymongo",
     "python-dotenv",
+    "pyTelegramBotAPI",
 ]
 
 [tool.vercel]
