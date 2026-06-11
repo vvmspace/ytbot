@@ -85,7 +85,7 @@ class handler(BaseHTTPRequestHandler):
                     print(f"Error archiving request: {e}")
                     send_telegram_message(
                         chat_id,
-                        "I regret to inform you that a complication has arisen whilst archiving your requests. Pray, try again shortly. ⚠️",
+                        f"I regret to inform you that a complication has arisen whilst archiving your requests. ⚠️\n\nError: {str(e)}",
                         reply_to_id=msg.get("message_id"),
                     )
 
