@@ -15,7 +15,10 @@ def send_telegram_message(chat_id, text, reply_to_id=None):
     payload = {"chat_id": chat_id, "text": text}
     if reply_to_id:
         payload["reply_to_message_id"] = reply_to_id
-    requests.post(url, json=payload)
+    response = requests.post(url, json=payload)
+    if response.ok:
+        return response.json().get("result", {}).get("message_id")
+    return None
 
 
 class handler(BaseHTTPRequestHandler):
@@ -56,12 +59,20 @@ class handler(BaseHTTPRequestHandler):
                         )
 
                         if not exists:
+                            # First, send the confirmation message and get its ID
+                            conf_msg_id = send_telegram_message(
+                                chat_id,
+                                f"{message} and placed within our most distinguished queue. We shall attend to them post-haste. 🎩⏳",
+                                reply_to_id=message_id,
+                            )
+
                             collection.insert_one(
                                 {
                                     "user_id": chat_id,
                                     "link": link,
                                     "status": "pending",
                                     "message_id": message_id,
+                                    "confirmation_message_id": conf_msg_id,
                                 }
                             )
                         else:
@@ -69,19 +80,7 @@ class handler(BaseHTTPRequestHandler):
 
                     # Acknowledge the user with a summary of the discovered recordings
                     count = len(cleaned_links)
-                    message = "Your request has been received"
-                    if count > 1:
-                        message = (
-                            f"I have discovered {count} recordings in your message"
-                        )
-                    else:
-                        message = "Your recording has been received"
-
-                    send_telegram_message(
-                        chat_id,
-                        f"{message} and placed within our most distinguished queue. We shall attend to them post-haste. 🎩⏳",
-                        reply_to_id=message_id,
-                    )
+                    # Summary messages are now handled inside the loop to capture message IDs
                 except Exception as e:
                     print(f"Error archiving request: {e}")
                     send_telegram_message(

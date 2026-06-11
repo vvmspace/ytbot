@@ -106,6 +106,7 @@ def process_task(task, collection):
         task["_id"],
         task.get("message_id"),
     )
+    confirmation_message_id = task.get("confirmation_message_id")
     task_dir = os.path.join("downloads", str(task_id))
     os.makedirs(task_dir, exist_ok=True)
 
@@ -116,7 +117,7 @@ def process_task(task, collection):
             reply_to_id=message_id,
             is_informative=True,
         )
-
++
         info = downloader.extract_info(link)
         safe_name = format_filename(
             info.get("title", "Unknown"), info.get("uploader", "Unknown")
@@ -257,9 +258,9 @@ def process_task(task, collection):
                     is_informative=False,
                 )
 
-            # Now that all delivery attempts are done, we can safely delete the anchor message
-            if message_id:
-                tg_client.delete_message(chat_id, message_id)
+            # Now that all delivery attempts are done, we can safely delete the confirmation message
+            if confirmation_message_id:
+                tg_client.delete_message(chat_id, confirmation_message_id)
 
         collection.update_one({"_id": task_id}, {"$set": {"status": status}})
         shutil.rmtree(task_dir, ignore_errors=True)
