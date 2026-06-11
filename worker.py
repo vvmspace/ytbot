@@ -91,7 +91,7 @@ def procure_and_send(
                 duration=int(duration),
             )
 
-        return True
+            return True
 
         return True
     except Exception as e:
@@ -124,9 +124,16 @@ def process_task(task, collection):
         formats = info.get("formats", [])
         duration = info.get("duration", 0)
 
-        # Selection logic for best formats within MAX_FILE_SIZE
+        # Selection logic for best formats
         def get_size(f):
             return f.get("filesize") or f.get("filesize_approx", float("inf"))
+
+        # If duration > 10m, we will re-encode anyway, so we can afford a higher quality source
+        # Set a reasonable cap for "high quality" to avoid downloading massive files (e.g. 500MB)
+        HIGH_QUALITY_CAP = 500 * 1024 * 1024
+        should_use_high_quality = duration > 600
+
+        size_limit = HIGH_QUALITY_CAP if should_use_high_quality else MAX_FILE_SIZE
 
         audio_m4a = [
             f
@@ -134,7 +141,7 @@ def process_task(task, collection):
             if f.get("acodec")
             and "mp4a" in f.get("acodec")
             and f.get("ext") == "m4a"
-            and get_size(f) <= MAX_FILE_SIZE
+            and get_size(f) <= size_limit
         ]
 
         video_candidates = []
@@ -145,7 +152,7 @@ def process_task(task, collection):
             if f.get("vcodec") != "none"
             and f.get("acodec") != "none"
             and f.get("ext") == "mp4"
-            and get_size(f) <= MAX_FILE_SIZE
+            and get_size(f) <= size_limit
         ]:
             video_candidates.append(
                 {
@@ -166,10 +173,10 @@ def process_task(task, collection):
             and f.get("ext") == "mp4"
         ]:
             v_size = get_size(v)
-            if v_size >= MAX_FILE_SIZE:
+            if v_size >= size_limit:
                 continue
             best_a = max(
-                [a for a in audio_m4a if get_size(a) <= (MAX_FILE_SIZE - v_size)],
+                [a for a in audio_m4a if get_size(a) <= (size_limit - v_size)],
                 key=lambda x: x.get("abr", 0),
                 default=None,
             )
@@ -249,6 +256,10 @@ def process_task(task, collection):
                     reply_to_id=message_id,
                     is_informative=False,
                 )
+
+            # Now that all delivery attempts are done, we can safely delete the anchor message
+            if message_id:
+                tg_client.delete_message(chat_id, message_id)
 
         collection.update_one({"_id": task_id}, {"$set": {"status": status}})
         shutil.rmtree(task_dir, ignore_errors=True)

@@ -29,6 +29,7 @@ class MediaProcessor:
         Compresses audio to fit within max_file_size.
         Returns the path to the compressed file.
         """
+        initial_size = os.path.getsize(file_path)
         duration = self.get_duration(file_path)
         max_bitrate_bps = int((40 * 1024 * 1024 * 8) / duration)
         max_bitrate_kbps = max_bitrate_bps // 1000
@@ -50,7 +51,8 @@ class MediaProcessor:
         tag_title = safe_name.replace("_", " ")
 
         logger.info(
-            f"Re-encoding audio to MP3: {bitrate}, channels={channels}, duration={duration:.1f}s"
+            f"Re-encoding audio to MP3: {bitrate}, channels={channels}, duration={duration:.1f}s. "
+            f"Initial size: {initial_size / (1024 * 1024):.2f}MB"
         )
 
         subprocess.run(
@@ -78,6 +80,10 @@ class MediaProcessor:
         )
 
         shutil.move(temp_output, final_path)
+        final_size = os.path.getsize(final_path)
+        logger.info(
+            f"Audio compression complete. Final size: {final_size / (1024 * 1024):.2f}MB"
+        )
         return final_path
 
     def compress_video(self, file_path: str) -> str:
@@ -85,10 +91,15 @@ class MediaProcessor:
         Compresses video to fit within max_file_size with watermark.
         Returns the path to the compressed file.
         """
+        initial_size = os.path.getsize(file_path)
         duration = self.get_duration(file_path)
         total_budget_bits = 40 * 1024 * 1024 * 8
         audio_bits = duration * 128 * 1000
         video_budget_bits = total_budget_bits - audio_bits
+
+        logger.info(
+            f"Starting video compression. Initial size: {initial_size / (1024 * 1024):.2f}MB, duration: {duration:.1f}s"
+        )
 
         target_bitrate_kbps = (
             64
@@ -102,10 +113,15 @@ class MediaProcessor:
         else:
             target_w = 640
 
+        # Watermark constraints: min 120px, max 1/4 of width
         wm_w = int(target_w * 0.15)
+        wm_w = max(120, wm_w)
+        wm_w = min(wm_w, int(target_w * 0.25))
+
+        # Use lanczos scaling for high quality watermark
         filter_complex = (
             f"[0:v]scale={target_w}:-2[bg];"
-            f"[1:v]scale={wm_w}:-1[wm];"
+            f"[1:v]scale={wm_w}:-1:flags=lanczos[wm];"
             f"[bg][wm]overlay=x=main_w-overlay_w-10:y=main_h-overlay_h-10:"
             f"enable='between(t,0,5)+between(t,{duration - 5},{duration})'"
         )
@@ -117,7 +133,7 @@ class MediaProcessor:
         temp_output = final_path + ".tmp.mp4"
 
         logger.info(
-            f"Two-pass encoding video. Bitrate: {target_bitrate_kbps}k, Width: {target_w}px"
+            f"Two-pass encoding video. Bitrate: {target_bitrate_kbps}k, Width: {target_w}px, Preset: slower"
         )
 
         # Pass 1
@@ -134,7 +150,7 @@ class MediaProcessor:
                 "-b:v",
                 f"{target_bitrate_kbps}k",
                 "-preset",
-                "medium",
+                "slower",
                 "-filter_complex",
                 filter_complex,
                 "-an",
@@ -162,7 +178,7 @@ class MediaProcessor:
                 "-b:v",
                 f"{target_bitrate_kbps}k",
                 "-preset",
-                "medium",
+                "slower",
                 "-filter_complex",
                 filter_complex,
                 "-c:a",
@@ -179,6 +195,32 @@ class MediaProcessor:
 
         shutil.move(temp_output, final_path)
 
+        # Save screenshot at 2 seconds
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-ss",
+                    "2",
+                    "-i",
+                    final_path,
+                    "-vframes",
+                    "1",
+                    "last.png",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            logger.info("Saved screenshot last.png")
+        except Exception as e:
+            logger.warning(f"Failed to save screenshot: {e}")
+
+        final_size = os.path.getsize(final_path)
+        logger.info(
+            f"Video compression complete. Final size: {final_size / (1024 * 1024):.2f}MB"
+        )
+
         # Clean up ffmpeg logs
         for f in os.listdir("."):
             if f.startswith("ffmpeg2pass"):
@@ -188,13 +230,20 @@ class MediaProcessor:
 
     def process(self, file_path: str, media_type: str, safe_name: str = None) -> tuple:
         """
-        Main entry point for processing. Re-encodes if file is too large.
+        Main entry point for processing. Re-encodes if file is too large
+        or if it's a video longer than 10 minutes (to apply watermark).
         Returns a tuple of (final_path, duration).
         """
         duration = self.get_duration(file_path)
         file_size = os.path.getsize(file_path)
-        if file_size <= self.max_file_size:
-            # Ensure extension is correct
+
+        if media_type == "video":
+            # Apply watermark if video is > 10 minutes OR exceeds size limit
+            if duration > 600 or file_size > self.max_file_size:
+                final_path = self.compress_video(file_path)
+                return final_path, duration
+
+            # Otherwise, just ensure extension is correct and move
             final_path = (
                 file_path.replace(".temp", "")
                 .replace(".mkv", ".mp4")
@@ -205,10 +254,10 @@ class MediaProcessor:
             return final_path, duration
 
         if media_type == "audio":
-            final_path = self.compress_audio(file_path, safe_name)
-            return final_path, duration
-        elif media_type == "video":
-            final_path = self.compress_video(file_path)
+            if file_size > self.max_file_size:
+                final_path = self.compress_audio(file_path, safe_name)
+            else:
+                final_path = file_path.replace(".temp", "")  # simplified
             return final_path, duration
 
         return file_path, duration

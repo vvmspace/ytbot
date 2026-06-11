@@ -80,3 +80,9 @@ class TelegramClient:
         except Exception as e:
             logger.error(f"Failed to send audio to {chat_id}: {e}")
             raise e
+
+    def delete_message(self, chat_id: int, message_id: int):
+        try:
+            self.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            logger.error(f"Failed to delete message {message_id} for {chat_id}: {e}")
