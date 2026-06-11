@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import re
 from http.server import BaseHTTPRequestHandler
 
@@ -12,6 +13,34 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_API_KEY = os.environ.get("TELEGRAM_API_KEY")
 MONGODB_CONNECTION_STRING = os.environ.get("MONGODB_CONNECTION_STRING")
+
+GENTLEMANLY_PROMPTS = [
+    "Pray, would you be so kind as to provide a YouTube link for our consideration?",
+    "I find myself in anticipation of a YouTube link, should you care to share one.",
+    "Might I suggest providing a YouTube link, that we may begin our distinguished work?",
+    "It would be most agreeable if you could furnish me with a YouTube link.",
+    "I am at your service, however, I require a YouTube link to proceed with the procurement.",
+    "Should it not be too much trouble, pray, share a YouTube link with me.",
+    "A YouTube link, if you please, so that I may attend to your request with utmost diligence.",
+    "I await your most esteemed YouTube link with the greatest of patience.",
+    "Would you be so gracious as to grant me a YouTube link for my perusal?",
+    "I fear I am lacking the necessary YouTube link to commence the operation.",
+    "Pray, enlighten me with a YouTube link, and I shall set the wheels in motion.",
+    "It would be a most welcome gesture if you could provide a YouTube link.",
+    "I find myself quite adrift without a YouTube link; might you provide one?",
+    "Your most distinguished YouTube link is all that is required to proceed.",
+    "Might I venture to ask for a YouTube link, if you are so inclined?",
+    "Pray, bestow upon me a YouTube link, and the procurement shall begin post-haste.",
+    "I remain your humble servant, awaiting only a YouTube link to begin the process.",
+    "Would it be within your power to provide a YouTube link for our distinguished queue?",
+    "A YouTube link would be most appreciated, if you would be so kind.",
+    "I am poised and ready, yet I lack the essential YouTube link to start.",
+    "Might you be so generous as to provide a YouTube link for my attention?",
+    "Pray, do not keep the machinery waiting; a YouTube link is all that is needed.",
+    "I should be most delighted to assist, provided you furnish me with a YouTube link.",
+    "I find my current state of inaction is due solely to the absence of a YouTube link.",
+    "Should you wish to proceed, I humbly request a YouTube link for my consideration.",
+]
 
 
 def send_telegram_message(chat_id, text, reply_to_id=None):
@@ -89,6 +118,12 @@ class handler(BaseHTTPRequestHandler):
                         f"I regret to inform you that a complication has arisen whilst archiving your requests. ⚠️\n\nError: {str(e)}",
                         reply_to_id=msg.get("message_id"),
                     )
+            else:
+                # No YouTube link found: respond with a distinguished prompt
+                prompt = random.choice(GENTLEMANLY_PROMPTS)
+                send_telegram_message(
+                    chat_id, prompt, reply_to_id=msg.get("message_id")
+                )
 
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
