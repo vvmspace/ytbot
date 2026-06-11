@@ -23,11 +23,17 @@ TELEGRAM_API_KEY = os.environ.get("TELEGRAM_API_KEY")
 MONGODB_CONNECTION_STRING = os.environ.get("MONGODB_CONNECTION_STRING")
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 MAX_FILE_SIZE = 40 * 1024 * 1024
+FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
+FFPROBE_PATH = os.environ.get("FFPROBE_PATH", "ffprobe")
 
 # Initialize components
 tg_client = TelegramClient(TELEGRAM_API_KEY, debug=DEBUG)
-downloader = YoutubeDownloader()
-processor = MediaProcessor(max_file_size=MAX_FILE_SIZE)
+downloader = YoutubeDownloader(ffmpeg_path=FFMPEG_PATH)
+processor = MediaProcessor(
+    max_file_size=MAX_FILE_SIZE,
+    ffmpeg_path=FFMPEG_PATH,
+    ffprobe_path=FFPROBE_PATH,
+)
 
 
 def format_filename(title, channel):
@@ -91,8 +97,6 @@ def procure_and_send(
                 duration=int(duration),
             )
 
-            return True
-
         return True
     except Exception as e:
         logger.error(f"Failed to procure and send {media_type}: {e}")
@@ -117,89 +121,20 @@ def process_task(task, collection):
             reply_to_id=message_id,
             is_informative=True,
         )
-+
+
         info = downloader.extract_info(link)
         safe_name = format_filename(
             info.get("title", "Unknown"), info.get("uploader", "Unknown")
         )
-        formats = info.get("formats", [])
         duration = info.get("duration", 0)
 
-        # Selection logic for best formats
-        def get_size(f):
-            return f.get("filesize") or f.get("filesize_approx", float("inf"))
+        best_a_fmt, best_v_fmt, best_v = downloader.select_formats(info, MAX_FILE_SIZE)
 
-        # If duration > 10m, we will re-encode anyway, so we can afford a higher quality source
-        # Set a reasonable cap for "high quality" to avoid downloading massive files (e.g. 500MB)
-        HIGH_QUALITY_CAP = 500 * 1024 * 1024
-        should_use_high_quality = duration > 600
-
-        size_limit = HIGH_QUALITY_CAP if should_use_high_quality else MAX_FILE_SIZE
-
-        audio_m4a = [
-            f
-            for f in formats
-            if f.get("acodec")
-            and "mp4a" in f.get("acodec")
-            and f.get("ext") == "m4a"
-            and get_size(f) <= size_limit
-        ]
-
-        video_candidates = []
-        # Combined MP4
-        for f in [
-            f
-            for f in formats
-            if f.get("vcodec") != "none"
-            and f.get("acodec") != "none"
-            and f.get("ext") == "mp4"
-            and get_size(f) <= size_limit
-        ]:
-            video_candidates.append(
-                {
-                    "format_id": f["format_id"],
-                    "width": f.get("width"),
-                    "height": f.get("height"),
-                    "size": get_size(f),
-                }
-            )
-
-        # Video only + Best audio
-        for v in [
-            f
-            for f in formats
-            if f.get("vcodec")
-            and "avc1" in f.get("vcodec")
-            and f.get("acodec") == "none"
-            and f.get("ext") == "mp4"
-        ]:
-            v_size = get_size(v)
-            if v_size >= size_limit:
-                continue
-            best_a = max(
-                [a for a in audio_m4a if get_size(a) <= (size_limit - v_size)],
-                key=lambda x: x.get("abr", 0),
-                default=None,
-            )
-            if best_a:
-                video_candidates.append(
-                    {
-                        "format_id": f"{v['format_id']}+{best_a['format_id']}",
-                        "width": v.get("width"),
-                        "height": v.get("height"),
-                        "size": v_size + get_size(best_a),
-                    }
-                )
-
-        best_v_fmt = video_candidates[0]["format_id"] if video_candidates else None
         if duration > 40 * 60:
             logger.info(
                 f"Skipping video procurement: duration {duration}s exceeds 40m limit"
             )
             best_v_fmt = None
-
-        best_a_fmt = max(audio_m4a, key=lambda x: x.get("abr", 0), default=None)
-        best_a_fmt = best_a_fmt["format_id"] if best_a_fmt else None
 
         audio_delivered, video_delivered = False, False
         with ThreadPoolExecutor() as executor:
@@ -216,9 +151,6 @@ def process_task(task, collection):
                 ).result():
                     audio_delivered = True
             if best_v_fmt:
-                best_v = next(
-                    c for c in video_candidates if c["format_id"] == best_v_fmt
-                )
                 if executor.submit(
                     procure_and_send,
                     link,

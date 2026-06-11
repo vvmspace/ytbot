@@ -7,13 +7,21 @@ logger = logging.getLogger(__name__)
 
 
 class MediaProcessor:
-    def __init__(self, max_file_size: int, watermark_path: str = "watermark.png"):
+    def __init__(
+        self,
+        max_file_size: int,
+        watermark_path: str = "watermark.png",
+        ffmpeg_path: str = "ffmpeg",
+        ffprobe_path: str = "ffprobe",
+    ):
         self.max_file_size = max_file_size
         self.watermark_path = watermark_path
+        self.ffmpeg_path = ffmpeg_path
+        self.ffprobe_path = ffprobe_path
 
     def get_duration(self, file_path: str) -> float:
         cmd = [
-            "ffprobe",
+            self.ffprobe_path,
             "-v",
             "error",
             "-show_entries",
@@ -57,7 +65,7 @@ class MediaProcessor:
 
         subprocess.run(
             [
-                "ffmpeg",
+                self.ffmpeg_path,
                 "-y",
                 "-i",
                 file_path,
@@ -139,7 +147,7 @@ class MediaProcessor:
         # Pass 1
         subprocess.run(
             [
-                "ffmpeg",
+                self.ffmpeg_path,
                 "-y",
                 "-i",
                 file_path,
@@ -167,7 +175,7 @@ class MediaProcessor:
         # Pass 2
         subprocess.run(
             [
-                "ffmpeg",
+                self.ffmpeg_path,
                 "-y",
                 "-i",
                 file_path,
@@ -199,7 +207,7 @@ class MediaProcessor:
         try:
             subprocess.run(
                 [
-                    "ffmpeg",
+                    self.ffmpeg_path,
                     "-y",
                     "-ss",
                     "2",
