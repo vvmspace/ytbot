@@ -24,13 +24,14 @@ class handler(BaseHTTPRequestHandler):
         post_data = self.rfile.read(content_length)
         update = json.loads(post_data.decode("utf-8"))
 
-        if "message" in update and "text" in update["message"]:
-            chat_id = update["message"]["chat"]["id"]
-            text = update["message"]["text"]
+        if "message" in update:
+            msg = update["message"]
+            text = msg.get("text") or msg.get("caption") or ""
+            chat_id = msg["chat"]["id"]
 
             # Extract all YouTube URLs from the message
             links = re.findall(
-                r"https?://(?:(?:www|m)\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[^\s]+",
+                r"https?://(?:(?:www|m)\.)?(?:youtube\.com/(?:watch\?v=|shorts/|v/|embed/)|youtu\.be/)[^\s]+",
                 text,
             )
 
@@ -44,9 +45,9 @@ class handler(BaseHTTPRequestHandler):
             if cleaned_links:
                 try:
                     client = MongoClient(MONGODB_CONNECTION_STRING)
-                    db = client["ytbot_db"]
-                    collection = db.ytbot
-                    message_id = update["message"]["message_id"]
+                    db = client["ytbot"]
+                    collection = db["tasks"]
+                    message_id = msg.get("message_id")
 
                     for link in cleaned_links:
                         collection.insert_one(
@@ -78,15 +79,13 @@ class handler(BaseHTTPRequestHandler):
                     send_telegram_message(
                         chat_id,
                         "I regret to inform you that a complication has arisen whilst archiving your requests. Pray, try again shortly. ⚠️",
-                        reply_to_id=update["message"]["message_id"]
-                        if "message" in update
-                        else None,
+                        reply_to_id=msg.get("message_id"),
                     )
 
         self.send_response(200)
-        self.send_header("Content-type", "text/plain")
+        self.send_header("Content-type", "application/json")
         self.end_headers()
-        self.wfile.write(b"OK")
+        self.wfile.write(post_data)
 
     def do_GET(self):
         self.send_response(200)
